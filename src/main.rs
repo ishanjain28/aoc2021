@@ -1,49 +1,58 @@
 #![feature(test)]
 extern crate test;
 
-const INPUT: &'static str = include_str!("../inputs/day1.txt");
+const INPUT: &'static str = include_str!("../inputs/day2.txt");
 
-fn depths() -> Vec<u64> {
-    INPUT
-        .lines()
-        .filter(|&x| !x.is_empty())
-        .map(|x| x.parse::<u64>().unwrap())
-        .collect()
+enum Moves {
+    Forward(i32),
+    Down(i32),
+    Up(i32),
 }
 
-fn solution(depths: &[u64]) -> i32 {
-    let mut count = 0;
+fn cmds() -> impl Iterator<Item = Moves> {
+    INPUT.lines().filter(|&x| !x.is_empty()).map(|x| {
+        let x: Vec<&str> = x.split_ascii_whitespace().collect();
 
-    // For a window size of 3, We can consider a window size of 4
-    // A + B + C && B + C + D
-    // Since B, C are shared between the two consecutive sets,
-    // We only need to compare A and D
-    for set in depths.windows(4) {
-        if set[0] < set[3] {
-            count += 1;
+        match x[0] {
+            "forward" => Moves::Forward(x[1].parse::<i32>().unwrap()),
+            "down" => Moves::Down(x[1].parse::<i32>().unwrap()),
+            "up" => Moves::Up(x[1].parse::<i32>().unwrap()),
+            _ => unreachable!(),
+        }
+    })
+}
+
+fn solution(moves: impl Iterator<Item = Moves>) -> i32 {
+    let mut vertical = 0;
+    let mut horizontal = 0;
+
+    for mmove in moves {
+        match mmove {
+            Moves::Forward(v) => horizontal += v,
+            Moves::Down(v) => vertical += v,
+            Moves::Up(v) => vertical -= v,
         }
     }
 
-    count
+    vertical * horizontal
 }
 
 fn main() {
-    let depths = &depths();
-    let count = solution(depths);
+    let moves = cmds();
+    let count = solution(moves);
     println!("increased {} times", count);
 }
 
 #[bench]
 fn solution_bench(b: &mut test::Bencher) {
-    let depths = depths();
-
     b.iter(|| {
-        let v = solution(&depths);
+        let moves = cmds();
+        let v = solution(moves);
         test::black_box(v);
     })
 }
 
 #[test]
 fn solution_test() {
-    assert_eq!(solution(&depths()), 1429);
+    assert_eq!(solution(cmds()), 1429);
 }
