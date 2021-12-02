@@ -11,30 +11,45 @@ enum Moves {
 
 fn cmds() -> impl Iterator<Item = Moves> {
     INPUT.lines().filter(|&x| !x.is_empty()).map(|x| {
-        let x: Vec<&str> = x.split_ascii_whitespace().collect();
+        let mut x = x.split_ascii_whitespace();
 
-        match x[0] {
-            "forward" => Moves::Forward(x[1].parse::<i32>().unwrap()),
-            "down" => Moves::Down(x[1].parse::<i32>().unwrap()),
-            "up" => Moves::Up(x[1].parse::<i32>().unwrap()),
+        let cmd = x.next();
+        let val = x.next().map(|x| x.parse::<i32>()).unwrap().unwrap();
+
+        match cmd {
+            Some("forward") => Moves::Forward(val),
+            Some("down") => Moves::Down(val),
+            Some("up") => Moves::Up(val),
             _ => unreachable!(),
         }
     })
 }
 
+struct Ship {
+    aim: i32,
+    vert_pos: i32,
+    hor_pos: i32,
+}
+
 fn solution(moves: impl Iterator<Item = Moves>) -> i32 {
-    let mut vertical = 0;
-    let mut horizontal = 0;
+    let mut ship = Ship {
+        aim: 0,
+        hor_pos: 0,
+        vert_pos: 0,
+    };
 
     for mmove in moves {
         match mmove {
-            Moves::Forward(v) => horizontal += v,
-            Moves::Down(v) => vertical += v,
-            Moves::Up(v) => vertical -= v,
+            Moves::Forward(v) => {
+                ship.hor_pos += v;
+                ship.vert_pos += ship.aim * v;
+            }
+            Moves::Down(v) => ship.aim += v,
+            Moves::Up(v) => ship.aim -= v,
         }
     }
 
-    vertical * horizontal
+    ship.hor_pos * ship.vert_pos
 }
 
 fn main() {
@@ -46,6 +61,8 @@ fn main() {
 #[bench]
 fn solution_bench(b: &mut test::Bencher) {
     b.iter(|| {
+        // Not ideal since we want to benchmark the function
+        // _excluding_ the time it takes to go through the input
         let moves = cmds();
         let v = solution(moves);
         test::black_box(v);
@@ -54,5 +71,5 @@ fn solution_bench(b: &mut test::Bencher) {
 
 #[test]
 fn solution_test() {
-    assert_eq!(solution(cmds()), 1429);
+    assert_eq!(solution(cmds()), 1463827010);
 }
