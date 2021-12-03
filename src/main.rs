@@ -14,32 +14,42 @@ fn cmds(input: &'static str) -> Vec<u64> {
         .collect()
 }
 
-fn solution<const MAX_LINE_LENGTH: usize>(levels: &[u64]) -> i64 {
-    let dominant_mask = count_bits::<MAX_LINE_LENGTH>(&levels, true);
+fn solution<const MAX_LENGTH: usize>(levels: Vec<u64>) -> u64 {
+    let oxygen_gen_rating = filter_candidates::<MAX_LENGTH>(levels.clone(), true);
+    let co2_scrub_rating = filter_candidates::<MAX_LENGTH>(levels, false);
 
-    let mut gamma = 0;
-    for i in (0..MAX_LINE_LENGTH).rev() {
-        let v = dominant_mask & (1 << i);
-        gamma <<= 1;
-
-        if v > 0 {
-            gamma |= 1;
-        } else {
-            gamma |= 0
-        }
-    }
-
-    let epsilon = !gamma & ((1 << MAX_LINE_LENGTH as i64) - 1);
-    gamma * epsilon
+    oxygen_gen_rating * co2_scrub_rating
 }
 
-fn count_bits<const LINE_LENGTH: usize>(levels: &[u64], dominant: bool) -> u64 {
+fn filter_candidates<const MAX_LENGTH: usize>(mut levels: Vec<u64>, dominant: bool) -> u64 {
+    let mut i = 0;
+    while levels.len() > 1 {
+        let count = count_bits::<MAX_LENGTH>(&levels, dominant);
+        let leading = count & (1 << (MAX_LENGTH - i - 1));
+
+        levels = levels
+            .into_iter()
+            .filter(|&x| {
+                let pos = x & (1 << (MAX_LENGTH - i - 1));
+
+                return pos == leading;
+            })
+            .collect();
+
+        i += 1;
+    }
+
+    levels[0]
+}
+
+fn count_bits<const MAX_LENGTH: usize>(levels: &[u64], dominant: bool) -> u64 {
     let n = levels.len();
-    let mut count = [0; LINE_LENGTH];
+    let mut count = [0; MAX_LENGTH];
+    let mut mask = 0;
 
     for &level in levels.iter() {
-        for i in 0..LINE_LENGTH {
-            let c = level & (1 << i);
+        for i in 0..MAX_LENGTH {
+            let c = level & (1 << (MAX_LENGTH - i - 1));
 
             if c != 0 {
                 count[i as usize] += 1;
@@ -47,10 +57,9 @@ fn count_bits<const LINE_LENGTH: usize>(levels: &[u64], dominant: bool) -> u64 {
         }
     }
 
-    let mut mask = 0;
     for (i, c) in count.into_iter().enumerate() {
         if c >= n - c {
-            mask |= 1 << i;
+            mask |= 1 << (MAX_LENGTH - i - 1);
         }
     }
 
@@ -63,10 +72,10 @@ fn count_bits<const LINE_LENGTH: usize>(levels: &[u64], dominant: bool) -> u64 {
 
 fn main() {
     let moves = cmds(INPUTS[0]);
-    let count = solution::<5>(&moves);
+    let count = solution::<5>(moves);
     println!("Result {}", count);
     let moves = cmds(INPUTS[1]);
-    let count = solution::<12>(&moves);
+    let count = solution::<12>(moves);
     println!("Result {}", count);
 }
 
@@ -74,13 +83,13 @@ fn main() {
 fn solution_bench(b: &mut test::Bencher) {
     let moves = cmds(INPUTS[1]);
     b.iter(|| {
-        let v = solution::<12>(&moves);
+        let v = solution::<12>(moves.clone());
         test::black_box(v);
     })
 }
 
 #[test]
 fn solution_test() {
-    assert_eq!(solution::<5>(&cmds(INPUTS[0])), 198);
-    assert_eq!(solution::<12>(&cmds(INPUTS[1])), 3687446);
+    assert_eq!(solution::<5>(cmds(INPUTS[0])), 230);
+    assert_eq!(solution::<12>(cmds(INPUTS[1])), 4406844);
 }
