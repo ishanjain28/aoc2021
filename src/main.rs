@@ -1,75 +1,86 @@
 #![feature(test)]
 extern crate test;
 
-const INPUT: &'static str = include_str!("../inputs/day2.txt");
+const INPUTS: [&'static str; 2] = [
+    include_str!("../inputs/day3.sample.txt"),
+    include_str!("../inputs/day3.txt"),
+];
 
-enum Moves {
-    Forward(i32),
-    Down(i32),
-    Up(i32),
+fn cmds(input: &'static str) -> Vec<u64> {
+    input
+        .lines()
+        .filter(|&x| !x.is_empty())
+        .map(|x| u64::from_str_radix(x, 2).unwrap())
+        .collect()
 }
 
-fn cmds() -> impl Iterator<Item = Moves> {
-    INPUT.lines().filter(|&x| !x.is_empty()).map(|x| {
-        let mut x = x.split_ascii_whitespace();
+fn solution<const MAX_LINE_LENGTH: usize>(levels: &[u64]) -> i64 {
+    let dominant_mask = count_bits::<MAX_LINE_LENGTH>(&levels, true);
 
-        let cmd = x.next();
-        let val = x.next().map(|x| x.parse::<i32>()).unwrap().unwrap();
+    let mut gamma = 0;
+    for i in (0..MAX_LINE_LENGTH).rev() {
+        let v = dominant_mask & (1 << i);
+        gamma <<= 1;
 
-        match cmd {
-            Some("forward") => Moves::Forward(val),
-            Some("down") => Moves::Down(val),
-            Some("up") => Moves::Up(val),
-            _ => unreachable!(),
-        }
-    })
-}
-
-struct Ship {
-    aim: i32,
-    vert_pos: i32,
-    hor_pos: i32,
-}
-
-fn solution(moves: impl Iterator<Item = Moves>) -> i32 {
-    let mut ship = Ship {
-        aim: 0,
-        hor_pos: 0,
-        vert_pos: 0,
-    };
-
-    for mmove in moves {
-        match mmove {
-            Moves::Forward(v) => {
-                ship.hor_pos += v;
-                ship.vert_pos += ship.aim * v;
-            }
-            Moves::Down(v) => ship.aim += v,
-            Moves::Up(v) => ship.aim -= v,
+        if v > 0 {
+            gamma |= 1;
+        } else {
+            gamma |= 0
         }
     }
 
-    ship.hor_pos * ship.vert_pos
+    let epsilon = !gamma & ((1 << MAX_LINE_LENGTH as i64) - 1);
+    gamma * epsilon
+}
+
+fn count_bits<const LINE_LENGTH: usize>(levels: &[u64], dominant: bool) -> u64 {
+    let n = levels.len();
+    let mut count = [0; LINE_LENGTH];
+
+    for &level in levels.iter() {
+        for i in 0..LINE_LENGTH {
+            let c = level & (1 << i);
+
+            if c != 0 {
+                count[i as usize] += 1;
+            }
+        }
+    }
+
+    let mut mask = 0;
+    for (i, c) in count.into_iter().enumerate() {
+        if c >= n - c {
+            mask |= 1 << i;
+        }
+    }
+
+    if dominant {
+        mask
+    } else {
+        !mask
+    }
 }
 
 fn main() {
-    let moves = cmds();
-    let count = solution(moves);
-    println!("increased {} times", count);
+    let moves = cmds(INPUTS[0]);
+    let count = solution::<5>(&moves);
+    println!("Result {}", count);
+    let moves = cmds(INPUTS[1]);
+    let count = solution::<12>(&moves);
+    println!("Result {}", count);
 }
 
 #[bench]
 fn solution_bench(b: &mut test::Bencher) {
+    let moves = cmds(INPUTS[1]);
     b.iter(|| {
-        // Not ideal since we want to benchmark the function
-        // _excluding_ the time it takes to go through the input
-        let moves = cmds();
-        let v = solution(moves);
+        let v = solution::<12>(&moves);
         test::black_box(v);
     })
 }
 
 #[test]
 fn solution_test() {
-    assert_eq!(solution(cmds()), 1463827010);
+    assert_eq!(solution::<5>(&cmds(INPUTS[0])), 198);
+    assert_eq!(solution::<12>(&cmds(INPUTS[1])), 3687446);
 }
