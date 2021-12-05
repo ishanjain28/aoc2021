@@ -2,114 +2,79 @@
 extern crate test;
 
 const INPUTS: [&'static str; 2] = [
-    include_str!("../inputs/day4.sample.txt"),
-    include_str!("../inputs/day4.txt"),
+    include_str!("../inputs/sample.txt"),
+    include_str!("../inputs/input.txt"),
 ];
 
-const WINNING_COMBINATIONS: [[(usize, usize); 5]; 5] = [
-    // Row wins
-    [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4)],
-    [(1, 0), (1, 1), (1, 2), (1, 3), (1, 4)],
-    [(2, 0), (2, 1), (2, 2), (2, 3), (2, 4)],
-    [(3, 0), (3, 1), (3, 2), (3, 3), (3, 4)],
-    [(4, 0), (4, 1), (4, 2), (4, 3), (4, 4)],
-];
-
-#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
-enum BoardEntry {
-    Entry(u64),
-    Called(u64),
-    Null,
+#[derive(Debug, Clone)]
+struct LineSegment {
+    x1: usize,
+    y1: usize,
+    x2: usize,
+    y2: usize,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-struct Board {
-    board: [[BoardEntry; 5]; 5],
-    sum: u64,
-    won: bool,
-}
+impl LineSegment {
+    fn generate_points(&self) -> Vec<(usize, usize)> {
+        if self.x1 == self.x2 {
+            let ymin = std::cmp::min(self.y1, self.y2);
+            let ymax = std::cmp::max(self.y1, self.y2);
 
-impl Board {
-    fn mark_draw(&mut self, draw: u64) {
-        for row in self.board.iter_mut() {
-            for val in row.iter_mut() {
-                if let BoardEntry::Entry(v) = val {
-                    if *v == draw {
-                        self.sum -= *v;
-                        *val = BoardEntry::Called(*v);
-                    }
-                }
-            }
+            return (ymin..=ymax).map(|y| (self.x1, y)).collect();
+        } else if self.y1 == self.y2 {
+            let xmin = std::cmp::min(self.x1, self.x2);
+            let xmax = std::cmp::max(self.x1, self.x2);
+
+            return (xmin..=xmax).map(|x| (x, self.y1)).collect();
+        } else {
+            vec![]
         }
     }
-
-    fn is_winner(&self) -> bool {
-        for set in WINNING_COMBINATIONS.iter() {
-            let col_match = set
-                .iter()
-                .map(|&(x, y)| self.board[y][x])
-                .all(|entry| matches!(entry, BoardEntry::Called(_)));
-
-            let row_match = set
-                .iter()
-                .map(|&(x, y)| self.board[x][y])
-                .all(|entry| matches!(entry, BoardEntry::Called(_)));
-
-            if row_match || col_match {
-                return true;
-            }
-        }
-
-        false
-    }
 }
 
-fn cmds(input: &'static str) -> (Vec<u64>, Vec<Board>) {
-    let mut lines = input.split("\n\n").filter(|x| !x.is_empty());
+fn parse_input(input: &'static str) -> Vec<LineSegment> {
+    let lines = input.split('\n').filter(|x| !x.is_empty());
+    lines
+        .map(|line| {
+            let mut line = line.split(" -> ");
 
-    let draws: Vec<u64> = lines
-        .next()
-        .unwrap()
-        .split(',')
-        .map(|x| x.parse::<u64>().unwrap())
-        .collect();
+            let start: Vec<usize> = line
+                .next()
+                .unwrap()
+                .split(',')
+                .map(|x| x.parse::<usize>().unwrap())
+                .collect();
+            let end: Vec<usize> = line
+                .next()
+                .unwrap()
+                .split(',')
+                .map(|x| x.parse::<usize>().unwrap())
+                .collect();
 
-    let mut boards = vec![];
-
-    for block in lines {
-        let mut bblock = Board {
-            board: [[BoardEntry::Null; 5]; 5],
-            sum: 0,
-            won: false,
-        };
-
-        for (i, line) in block.split('\n').enumerate() {
-            for (j, c) in line.split(' ').filter(|x| !x.is_empty()).enumerate() {
-                let num = c.parse::<u64>().unwrap();
-                bblock.board[i][j] = BoardEntry::Entry(num);
-                bblock.sum += num;
+            LineSegment {
+                x1: start[0],
+                y1: start[1],
+                x2: end[0],
+                y2: end[1],
             }
-        }
-
-        boards.push(bblock)
-    }
-
-    (draws, boards)
+        })
+        .collect()
 }
 
-fn solution((draws, mut boards): (Vec<u64>, Vec<Board>)) -> u64 {
+fn solution(coords: Vec<LineSegment>) -> u64 {
     let mut answer = 0;
+    let mut grid = vec![vec![0; 1000]; 1000];
 
-    for draw in draws {
-        for board in boards.iter_mut() {
-            if board.won {
-                continue;
-            }
-            board.mark_draw(draw);
+    for coord in coords {
+        for (x, y) in coord.generate_points() {
+            grid[x][y] += 1;
+        }
+    }
 
-            if board.is_winner() {
-                answer = board.sum * draw;
-                board.won = true;
+    for row in grid {
+        for val in row {
+            if val >= 2 {
+                answer += 1;
             }
         }
     }
@@ -119,7 +84,7 @@ fn solution((draws, mut boards): (Vec<u64>, Vec<Board>)) -> u64 {
 
 fn main() {
     for input in INPUTS {
-        let input = cmds(input);
+        let input = parse_input(input);
         let result = solution(input);
         println!("Result {}", result);
     }
@@ -127,7 +92,7 @@ fn main() {
 
 #[bench]
 fn solution_bench(b: &mut test::Bencher) {
-    let input = cmds(INPUTS[1]);
+    let input = parse_input(INPUTS[1]);
     b.iter(|| {
         let result = solution(input.clone());
         test::black_box(result);
