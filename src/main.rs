@@ -15,19 +15,26 @@ struct LineSegment {
 }
 
 impl LineSegment {
-    fn generate_points(&self) -> Vec<(usize, usize)> {
-        if self.x1 == self.x2 {
-            let ymin = std::cmp::min(self.y1, self.y2);
-            let ymax = std::cmp::max(self.y1, self.y2);
+    fn generate_y_points(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        let ymin = std::cmp::min(self.y1, self.y2);
+        let ymax = std::cmp::max(self.y1, self.y2);
 
-            return (ymin..=ymax).map(|y| (self.x1, y)).collect();
-        } else if self.y1 == self.y2 {
-            let xmin = std::cmp::min(self.x1, self.x2);
-            let xmax = std::cmp::max(self.x1, self.x2);
+        (ymin..=ymax).map(|y| (self.x1, y))
+    }
 
-            return (xmin..=xmax).map(|x| (x, self.y1)).collect();
-        } else {
-            vec![]
+    fn generate_x_points(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        let xmin = std::cmp::min(self.x1, self.x2);
+        let xmax = std::cmp::max(self.x1, self.x2);
+
+        (xmin..=xmax).map(|x| (x, self.y1))
+    }
+
+    fn generate_diag_points(&self) -> Vec<(usize, usize)> {
+        match (self.x2 >= self.x1, self.y2 >= self.y1) {
+            (true, true) => (self.x1..=self.x2).zip(self.y1..=self.y2).collect(),
+            (true, false) => (self.x1..=self.x2).zip((self.y2..=self.y1).rev()).collect(),
+            (false, true) => ((self.x2..=self.x1).rev()).zip(self.y1..=self.y2).collect(),
+            (false, false) => (self.x2..=self.x1).zip(self.y2..=self.y1).collect(),
         }
     }
 }
@@ -66,8 +73,24 @@ fn solution(coords: Vec<LineSegment>) -> u64 {
     let mut grid = vec![vec![0; 1000]; 1000];
 
     for coord in coords {
-        for (x, y) in coord.generate_points() {
-            grid[x][y] += 1;
+        if coord.x1 == coord.x2 {
+            for (x, y) in coord.generate_y_points() {
+                unsafe {
+                    *grid.get_unchecked_mut(x).get_unchecked_mut(y) += 1;
+                }
+            }
+        } else if coord.y1 == coord.y2 {
+            for (x, y) in coord.generate_x_points() {
+                unsafe {
+                    *grid.get_unchecked_mut(x).get_unchecked_mut(y) += 1;
+                }
+            }
+        } else {
+            for (x, y) in coord.generate_diag_points() {
+                unsafe {
+                    *grid.get_unchecked_mut(x).get_unchecked_mut(y) += 1;
+                }
+            }
         }
     }
 
