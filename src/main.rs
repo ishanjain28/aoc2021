@@ -22,7 +22,7 @@ fn compute_cost(crabs: &[i64], mid: i64) -> i64 {
     for &crab in crabs {
         let distance = (crab - mid).abs();
 
-        cost += distance;
+        cost += distance * (distance + 1) / 2;
     }
     cost
 }
