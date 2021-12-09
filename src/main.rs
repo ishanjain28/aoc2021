@@ -1,6 +1,4 @@
 #![feature(test)]
-
-use std::collections::HashMap;
 extern crate test;
 
 const INPUTS: [&'static str; 2] = [
@@ -12,215 +10,86 @@ const fn map_to_segment(c: char) -> u8 {
     1 << (c as u8 - b'a')
 }
 
-fn parse_digits(ip: &str) -> Vec<u8> {
-    let mut out = Vec::with_capacity(ip.len());
+fn parse_input(input: &'static str) -> impl Iterator<Item = (Vec<u8>, Vec<u8>)> {
+    input.lines().filter(|&x| !x.is_empty()).map(|line| {
+        let (hints, displays) = line.split_once(" | ").unwrap();
 
-    for c in ip.chars() {
-        out.push(map_to_segment(c));
-    }
-
-    out.sort_unstable();
-
-    out
-}
-
-fn parse_input(input: &'static str) -> Vec<(Vec<Vec<u8>>, Vec<Vec<u8>>)> {
-    input
-        .lines()
-        .filter(|&x| !x.is_empty())
-        .map(|line| {
-            let (hints, displays) = line.split_once(" | ").unwrap();
-
-            let hints = hints
-                .split(' ')
-                .filter(|x| !x.is_empty())
-                .map(parse_digits)
-                .collect();
-            let digits = displays
-                .split(' ')
-                .filter(|x| !x.is_empty())
-                .map(parse_digits)
-                .collect();
-
-            (hints, digits)
-        })
-        .collect()
-}
-
-pub fn permute(mut nums: [u8; 7]) -> Vec<[u8; 7]> {
-    let mut ans = vec![];
-    let k = nums.len();
-    permute_helper(&mut nums, &mut ans, k);
-
-    ans
-}
-
-fn permute_helper(nums: &mut [u8; 7], permutations: &mut Vec<[u8; 7]>, k: usize) {
-    if k == 1 {
-        permutations.push(*nums);
-    } else {
-        for i in 0..k {
-            permute_helper(nums, permutations, k - 1);
-
-            if i < k - 1 {
-                if k % 2 == 0 {
-                    nums.swap(i, k - 1);
-                } else {
-                    nums.swap(0, k - 1);
+        let hints = hints
+            .split(' ')
+            .filter(|x| !x.is_empty())
+            .map(|hint| {
+                let mut out = 0;
+                for c in hint.chars() {
+                    out |= map_to_segment(c);
                 }
-            }
-        }
-    }
+                out
+            })
+            .collect();
+
+        let digits = displays
+            .split(' ')
+            .filter(|x| !x.is_empty())
+            .map(|hint| {
+                let mut out = 0;
+                for c in hint.chars() {
+                    out |= map_to_segment(c);
+                }
+                out
+            })
+            .collect();
+
+        (hints, digits)
+    })
 }
 
-fn generate_charset(permutation: &[u8]) -> Vec<Vec<u8>> {
-    let mut answer = vec![vec![]; 10];
+fn decode_hint(hints: Vec<u8>) -> [u8; 10] {
+    let mut out = [0; 10];
 
-    for digit in 0..=9 {
-        let mut out = vec![];
+    for &hint in hints.iter() {
+        match hint.count_ones() {
+            2 => out[1] = hint,
+            4 => out[4] = hint,
+            3 => out[7] = hint,
+            7 => out[8] = hint,
 
-        match digit {
-            0 => {
-                out.push(permutation[0]);
-                out.push(permutation[1]);
-                out.push(permutation[2]);
-                out.push(permutation[4]);
-                out.push(permutation[5]);
-                out.push(permutation[6]);
-            }
-            1 => {
-                out.push(permutation[2]);
-                out.push(permutation[5]);
-            }
-            2 => {
-                out.push(permutation[0]);
-                out.push(permutation[2]);
-                out.push(permutation[3]);
-                out.push(permutation[4]);
-                out.push(permutation[6]);
-            }
-            3 => {
-                out.push(permutation[0]);
-                out.push(permutation[2]);
-                out.push(permutation[3]);
-                out.push(permutation[5]);
-                out.push(permutation[6]);
-            }
-            4 => {
-                out.push(permutation[1]);
-                out.push(permutation[2]);
-                out.push(permutation[3]);
-                out.push(permutation[5]);
-            }
-            5 => {
-                out.push(permutation[0]);
-                out.push(permutation[1]);
-                out.push(permutation[3]);
-                out.push(permutation[5]);
-                out.push(permutation[6]);
-            }
-            6 => {
-                out.push(permutation[0]);
-                out.push(permutation[1]);
-                out.push(permutation[3]);
-                out.push(permutation[4]);
-                out.push(permutation[5]);
-                out.push(permutation[6]);
-            }
-            7 => {
-                out.push(permutation[0]);
-                out.push(permutation[2]);
-                out.push(permutation[5]);
-            }
-            8 => {
-                out.push(permutation[0]);
-                out.push(permutation[1]);
-                out.push(permutation[2]);
-                out.push(permutation[3]);
-                out.push(permutation[4]);
-                out.push(permutation[5]);
-                out.push(permutation[6]);
-            }
-            9 => {
-                out.push(permutation[0]);
-                out.push(permutation[1]);
-                out.push(permutation[2]);
-                out.push(permutation[3]);
-                out.push(permutation[5]);
-                out.push(permutation[6]);
-            }
             _ => (),
         }
-
-        answer[digit] = out;
     }
 
-    answer
-        .into_iter()
-        .map(|mut set| {
-            set.sort_unstable();
-            set
-        })
-        .collect()
-}
+    for hint in hints {
+        let one_overlap = (hint & out[1]).count_ones();
+        let four_overlap = (hint & out[4]).count_ones();
 
-#[inline]
-fn verify_perfect_overlap(d1: &[u8], d2: &[u8]) -> bool {
-    if d1.len() != d2.len() {
-        return false;
-    }
-
-    d1 == d2
-}
-
-fn find_best_fit(permutations: &[[u8; 7]], mut hints: Vec<Vec<u8>>) -> Option<Vec<Vec<u8>>> {
-    hints.sort_unstable_by(|a, b| a.len().cmp(&b.len()));
-
-    for permutation in permutations {
-        let charset = generate_charset(permutation);
-        let mut map = HashMap::new();
-
-        for (i, cset) in charset.iter().enumerate() {
-            for hint in hints.iter() {
-                if verify_perfect_overlap(&cset, &hint) {
-                    if map.contains_key(&hint) {
-                        continue;
-                    } else {
-                        map.insert(hint, i);
-                    }
-                }
-            }
-        }
-
-        if map.len() == hints.len() {
-            return Some(charset);
+        match (hint.count_ones(), one_overlap, four_overlap) {
+            (5, 1, 2) => out[2] = hint,
+            (5, 2, 3) => out[3] = hint,
+            (5, 1, 3) => out[5] = hint,
+            (6, 1, 3) => out[6] = hint,
+            (6, 2, 4) => out[9] = hint,
+            (6, 2, 3) => out[0] = hint,
+            _ => (),
         }
     }
 
-    None
+    return out;
 }
 
-fn solution(input: Vec<(Vec<Vec<u8>>, Vec<Vec<u8>>)>) -> u64 {
-    // Generate all possible permutations of abcdefg
-    let permutations = permute([
-        0b0000001, 0b0000010, 0b0000100, 0b0001000, 0b0010000, 0b0100000, 0b1000000,
-    ]);
-
+fn solution(input: impl Iterator<Item = (Vec<u8>, Vec<u8>)>) -> i32 {
     let mut answer = 0;
     for (hints, digits) in input {
-        let best_fit = find_best_fit(&permutations, hints).unwrap();
+        let decoded_hints = decode_hint(hints);
+        let mut out = 0;
 
-        let mut out_digit = String::new();
-        for digit in digits {
-            for (i, fit) in best_fit.iter().enumerate() {
-                if fit == &digit {
-                    out_digit.push_str(&i.to_string());
+        let offset = digits.len() as u32;
+        for (j, digit) in digits.into_iter().enumerate() {
+            for (i, &hint) in decoded_hints.iter().enumerate() {
+                if hint == digit {
+                    out += i as i32 * 10i32.pow(offset - j as u32 - 1);
                 }
             }
         }
 
-        let parsed = u64::from_str_radix(&out_digit, 10).unwrap();
-        answer += parsed;
+        answer += out;
     }
 
     answer
@@ -236,9 +105,9 @@ fn main() {
 
 #[bench]
 fn solution_bench(b: &mut test::Bencher) {
-    let input = parse_input(INPUTS[1]);
     b.iter(|| {
-        let result = solution(input.clone());
+        let input = parse_input(INPUTS[1]);
+        let result = solution(input);
         test::black_box(result);
     })
 }
