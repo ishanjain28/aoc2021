@@ -11,43 +11,51 @@ fn parse_input(input: &'static str) -> impl Iterator<Item = &'static str> {
 }
 
 fn solution(input: impl Iterator<Item = &'static str>) -> u64 {
-    let mut score = 0;
-    for line in input {
+    let mut candidates = vec![];
+
+    'outer: for line in input {
         let mut stack = Vec::with_capacity(line.len());
 
         for c in line.chars() {
             match c {
                 '{' | '(' | '<' | '[' => stack.push(c),
-                '}' => {
-                    if stack.pop() != Some('{') {
-                        score += 1197
+                '}' | ']' | '>' => {
+                    if stack.pop() != Some((c as u8 - 2) as char) {
+                        continue 'outer;
                     }
                 }
 
                 ')' => {
                     if stack.pop() != Some('(') {
-                        score += 3
-                    }
-                }
-
-                '>' => {
-                    if stack.pop() != Some('<') {
-                        score += 25137
-                    }
-                }
-
-                ']' => {
-                    if stack.pop() != Some('[') {
-                        score += 57
+                        continue 'outer;
                     }
                 }
 
                 _ => unreachable!(),
             }
         }
+
+        let mut score = 0;
+        while let Some(v) = stack.pop() {
+            score *= 5;
+            match v {
+                '(' => score += 1,
+                '[' => score += 2,
+                '{' => score += 3,
+                '<' => score += 4,
+
+                _ => unreachable!(),
+            }
+        }
+
+        candidates.push(score);
     }
 
-    score
+    let l = candidates.len();
+
+    candidates.select_nth_unstable(l / 2);
+
+    candidates[candidates.len() / 2]
 }
 
 fn main() {
