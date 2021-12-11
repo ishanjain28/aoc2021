@@ -6,56 +6,82 @@ const INPUTS: [&'static str; 2] = [
     include_str!("../inputs/input.txt"),
 ];
 
-fn parse_input(input: &'static str) -> impl Iterator<Item = &'static str> {
-    input.lines()
+fn parse_input(input: &'static str) -> Vec<Vec<u64>> {
+    input
+        .lines()
+        .map(|x| x.bytes().map(|x| (x - b'0') as u64).collect())
+        .collect()
 }
 
-fn solution(input: impl Iterator<Item = &'static str>) -> u64 {
-    let mut candidates = vec![];
+fn solution(mut input: Vec<Vec<u64>>) -> u64 {
+    let mut flashes = 0;
 
-    'outer: for line in input {
-        let mut stack = Vec::with_capacity(line.len());
+    let m = input.len();
+    let n = input[0].len();
 
-        for c in line.chars() {
-            match c {
-                '{' | '(' | '<' | '[' => stack.push(c),
-                '}' | ']' | '>' => {
-                    if stack.pop() != Some((c as u8 - 2) as char) {
-                        continue 'outer;
-                    }
+    for _ in 1..=100 {
+        for row in input.iter_mut() {
+            for col in row {
+                if *col == 9 {
+                    *col = 0;
+                } else {
+                    *col += 1;
                 }
-
-                ')' => {
-                    if stack.pop() != Some('(') {
-                        continue 'outer;
-                    }
-                }
-
-                _ => unreachable!(),
             }
         }
 
-        let mut score = 0;
-        while let Some(v) = stack.pop() {
-            score *= 5;
-            match v {
-                '(' => score += 1,
-                '[' => score += 2,
-                '{' => score += 3,
-                '<' => score += 4,
+        let mut tmp = input.clone();
 
-                _ => unreachable!(),
+        for i in 0..m {
+            for j in 0..n {
+                if input[i][j] == 0 {
+                    dfs(&mut tmp, i as i32, j as i32);
+                }
             }
         }
+        input = tmp;
 
-        candidates.push(score);
+        for row in input.iter() {
+            for &col in row {
+                if col == 0 {
+                    flashes += 1;
+                }
+            }
+        }
     }
 
-    let l = candidates.len();
+    flashes
+}
 
-    candidates.select_nth_unstable(l / 2);
+fn dfs(ip: &mut Vec<Vec<u64>>, i: i32, j: i32) {
+    for x in -1..=1 {
+        for y in -1..=1 {
+            if x == 0 && y == 0 {
+                continue;
+            }
+            let px = i + x;
+            let py = j + y;
 
-    candidates[candidates.len() / 2]
+            if px < 0
+                || py < 0
+                || px >= ip.len() as i32
+                || py >= ip[0].len() as i32
+                || ip[px as usize][py as usize] == 0
+            {
+                continue;
+            }
+
+            if ip[px as usize][py as usize] == 9 {
+                ip[px as usize][py as usize] = 0;
+            } else {
+                ip[px as usize][py as usize] += 1;
+            }
+
+            if ip[px as usize][py as usize] == 0 {
+                dfs(ip, px, py);
+            }
+        }
+    }
 }
 
 fn main() {
