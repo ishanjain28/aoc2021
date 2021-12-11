@@ -14,12 +14,11 @@ fn parse_input(input: &'static str) -> Vec<Vec<u64>> {
 }
 
 fn solution(mut input: Vec<Vec<u64>>) -> u64 {
-    let mut flashes = 0;
-
     let m = input.len();
     let n = input[0].len();
+    let mut step = 1;
 
-    for _ in 1..=100 {
+    loop {
         for row in input.iter_mut() {
             for col in row {
                 if *col == 9 {
@@ -41,16 +40,11 @@ fn solution(mut input: Vec<Vec<u64>>) -> u64 {
         }
         input = tmp;
 
-        for row in input.iter() {
-            for &col in row {
-                if col == 0 {
-                    flashes += 1;
-                }
-            }
+        if input.iter().all(|row| row.iter().all(|&c| c == 0)) {
+            return step;
         }
+        step += 1;
     }
-
-    flashes
 }
 
 fn dfs(ip: &mut Vec<Vec<u64>>, i: i32, j: i32) {
