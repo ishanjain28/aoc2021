@@ -13,7 +13,7 @@ fn parse_input(input: &'static str) -> (Vec<Vec<usize>>, Vec<bool>) {
 
     for (a, b) in input.lines().map(|x| x.split_once('-')).flatten() {
         let mut process = |x: &'static str| -> usize {
-            let xi = if let Some(&v) = map.get(x) {
+            if let Some(&v) = map.get(x) {
                 v
             } else {
                 adj_list.push(vec![]);
@@ -21,9 +21,7 @@ fn parse_input(input: &'static str) -> (Vec<Vec<usize>>, Vec<bool>) {
                 let i = map.len();
                 map.insert(x, i);
                 i
-            };
-
-            xi
+            }
         };
 
         let si = process(a);
@@ -33,7 +31,6 @@ fn parse_input(input: &'static str) -> (Vec<Vec<usize>>, Vec<bool>) {
         if di != 0 && si != 1 {
             adj_list[si].push(di);
         }
-
         if si != 0 && di != 1 {
             adj_list[di].push(si);
         }
@@ -45,25 +42,46 @@ fn parse_input(input: &'static str) -> (Vec<Vec<usize>>, Vec<bool>) {
 use std::collections::HashMap;
 
 fn solution((adj_list, cap_list): (Vec<Vec<usize>>, Vec<bool>)) -> u64 {
-    let mut visited = vec![false; cap_list.len()];
+    let mut visited = 0;
 
-    dfs(&adj_list, &cap_list, &mut visited, 0)
+    let mut memo = HashMap::new();
+
+    dfs::<true>(&adj_list, &cap_list, &mut visited, &mut memo, 0)
 }
 
 #[inline]
-fn dfs(adj_list: &Vec<Vec<usize>>, cap_list: &[bool], visited: &mut Vec<bool>, node: usize) -> u64 {
+fn dfs<const REPEAT: bool>(
+    adj_list: &Vec<Vec<usize>>,
+    cap_list: &[bool],
+    visited: &mut u64,
+    map: &mut HashMap<(usize, bool, u64), u64>,
+    node: usize,
+) -> u64 {
     if node == 1 {
         return 1;
     }
 
+    if let Some(&v) = map.get(&(node, REPEAT, *visited)) {
+        return v;
+    }
+
     let mut paths = 0;
     for &neighbour in adj_list[node].iter() {
-        if !visited[neighbour] || cap_list[neighbour] {
-            visited[neighbour] = true;
-            paths += dfs(adj_list, cap_list, visited, neighbour);
-            visited[neighbour] = false;
+        match ((*visited & (1 << neighbour) > 0), (cap_list[neighbour])) {
+            (false, _) | (_, true) => {
+                *visited |= 1 << neighbour;
+                paths += dfs::<REPEAT>(adj_list, cap_list, visited, map, neighbour);
+                *visited &= !(1 << neighbour);
+            }
+            // If repeat flag is set, We include the node once more and calculate all paths
+            (true, false) if REPEAT => {
+                paths += dfs::<false>(adj_list, cap_list, visited, map, neighbour);
+            }
+            _ => (),
         }
     }
+
+    map.insert((node, REPEAT, *visited), paths);
 
     paths
 }
