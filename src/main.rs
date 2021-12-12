@@ -6,76 +6,66 @@ const INPUTS: [&'static str; 2] = [
     include_str!("../inputs/input.txt"),
 ];
 
-fn parse_input(input: &'static str) -> Vec<Vec<u64>> {
-    input
-        .lines()
-        .map(|x| x.bytes().map(|x| (x - b'0') as u64).collect())
-        .collect()
-}
+fn parse_input(input: &'static str) -> (Vec<Vec<usize>>, Vec<bool>) {
+    let mut map = HashMap::from([("start", 0), ("end", 1)]);
+    let mut cap_list = vec![false; 2];
+    let mut adj_list = vec![vec![]; 2];
 
-fn solution(mut input: Vec<Vec<u64>>) -> u64 {
-    let m = input.len();
-    let n = input[0].len();
-    let mut step = 1;
-
-    loop {
-        for row in input.iter_mut() {
-            for col in row {
-                if *col == 9 {
-                    *col = 0;
-                } else {
-                    *col += 1;
-                }
-            }
-        }
-
-        let mut tmp = input.clone();
-
-        for i in 0..m {
-            for j in 0..n {
-                if input[i][j] == 0 {
-                    dfs(&mut tmp, i as i32, j as i32);
-                }
-            }
-        }
-        input = tmp;
-
-        if input.iter().all(|row| row.iter().all(|&c| c == 0)) {
-            return step;
-        }
-        step += 1;
-    }
-}
-
-fn dfs(ip: &mut Vec<Vec<u64>>, i: i32, j: i32) {
-    for x in -1..=1 {
-        for y in -1..=1 {
-            if x == 0 && y == 0 {
-                continue;
-            }
-            let px = i + x;
-            let py = j + y;
-
-            if px < 0
-                || py < 0
-                || px >= ip.len() as i32
-                || py >= ip[0].len() as i32
-                || ip[px as usize][py as usize] == 0
-            {
-                continue;
-            }
-
-            if ip[px as usize][py as usize] == 9 {
-                ip[px as usize][py as usize] = 0;
+    for (a, b) in input.lines().map(|x| x.split_once('-')).flatten() {
+        let mut process = |x: &'static str| -> usize {
+            let xi = if let Some(&v) = map.get(x) {
+                v
             } else {
-                ip[px as usize][py as usize] += 1;
-            }
+                adj_list.push(vec![]);
+                cap_list.push(x.chars().any(char::is_uppercase));
+                let i = map.len();
+                map.insert(x, i);
+                i
+            };
 
-            if ip[px as usize][py as usize] == 0 {
-                dfs(ip, px, py);
-            }
+            xi
+        };
+
+        let si = process(a);
+        let di = process(b);
+
+        // Don't add mappings with destination start or source end
+        if di != 0 && si != 1 {
+            adj_list[si].push(di);
+        }
+
+        if si != 0 && di != 1 {
+            adj_list[di].push(si);
         }
     }
+
+    (adj_list, cap_list)
+}
+
+use std::collections::HashMap;
+
+fn solution((adj_list, cap_list): (Vec<Vec<usize>>, Vec<bool>)) -> u64 {
+    let mut visited = vec![false; cap_list.len()];
+
+    dfs(&adj_list, &cap_list, &mut visited, 0)
+}
+
+#[inline]
+fn dfs(adj_list: &Vec<Vec<usize>>, cap_list: &[bool], visited: &mut Vec<bool>, node: usize) -> u64 {
+    if node == 1 {
+        return 1;
+    }
+
+    let mut paths = 0;
+    for &neighbour in adj_list[node].iter() {
+        if !visited[neighbour] || cap_list[neighbour] {
+            visited[neighbour] = true;
+            paths += dfs(adj_list, cap_list, visited, neighbour);
+            visited[neighbour] = false;
+        }
+    }
+
+    paths
 }
 
 fn main() {
@@ -88,9 +78,9 @@ fn main() {
 
 #[bench]
 fn solution_bench(b: &mut test::Bencher) {
+    let input = parse_input(INPUTS[1]);
     b.iter(|| {
-        let input = parse_input(INPUTS[1]);
-        let result = solution(input);
+        let result = solution(input.clone());
         test::black_box(result);
     })
 }
