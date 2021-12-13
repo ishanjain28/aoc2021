@@ -1,4 +1,6 @@
 #![feature(test)]
+
+use std::fmt::{Display, Write};
 extern crate test;
 
 const INPUTS: [&'static str; 2] = [
@@ -10,6 +12,15 @@ const INPUTS: [&'static str; 2] = [
 enum NodeType {
     Dot,
     Empty,
+}
+
+impl Display for NodeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeType::Dot => f.write_char('\u{2588}'),
+            NodeType::Empty => f.write_char('.'),
+        }
+    }
 }
 
 impl NodeType {
@@ -71,7 +82,7 @@ fn parse_input(input: &'static str) -> (Vec<Point>, Vec<Fold>) {
     (points, folds)
 }
 
-fn solution((points, folds): (Vec<Point>, Vec<Fold>)) -> u64 {
+fn solution((points, folds): (Vec<Point>, Vec<Fold>)) -> Vec<Vec<NodeType>> {
     let mut y_max = 0;
     let mut x_max = 0;
     for point in points.iter() {
@@ -94,6 +105,8 @@ fn solution((points, folds): (Vec<Point>, Vec<Fold>)) -> u64 {
                         let mirror = std::mem::replace(&mut grid[j][n - i - 1], NodeType::Empty);
                         grid[j][i] = grid[j][i].or(&mirror);
                     }
+
+                    grid[j] = grid[j].iter().take(position).cloned().collect();
                 }
             }
             Fold::Y(position) => {
@@ -104,28 +117,25 @@ fn solution((points, folds): (Vec<Point>, Vec<Fold>)) -> u64 {
                         grid[j][i] = grid[j][i].or(&mirror);
                     }
                 }
+
+                grid = grid.into_iter().take(position).collect();
             }
         }
-
-        let mut sum = 0;
-        for row in grid {
-            sum += row.into_iter().fold(0, |a, x| match x {
-                NodeType::Dot => a + 1,
-                NodeType::Empty => a,
-            })
-        }
-
-        return sum;
     }
 
-    0
+    grid
 }
 
 fn main() {
     for input in INPUTS {
         let input = parse_input(input);
-        let result = solution(input);
-        println!("Result {}", result);
+        let grid = solution(input);
+        for row in grid.iter() {
+            for c in row {
+                print!("{}", c);
+            }
+            println!("")
+        }
     }
 }
 
