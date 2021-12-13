@@ -6,84 +6,119 @@ const INPUTS: [&'static str; 2] = [
     include_str!("../inputs/input.txt"),
 ];
 
-fn parse_input(input: &'static str) -> (Vec<Vec<usize>>, Vec<bool>) {
-    let mut map = HashMap::from([("start", 0), ("end", 1)]);
-    let mut cap_list = vec![false; 2];
-    let mut adj_list = vec![vec![]; 2];
-
-    for (a, b) in input.lines().map(|x| x.split_once('-')).flatten() {
-        let mut process = |x: &'static str| -> usize {
-            if let Some(&v) = map.get(x) {
-                v
-            } else {
-                adj_list.push(vec![]);
-                cap_list.push(x.chars().any(char::is_uppercase));
-                let i = map.len();
-                map.insert(x, i);
-                i
-            }
-        };
-
-        let si = process(a);
-        let di = process(b);
-
-        // Don't add mappings with destination start or source end
-        if di != 0 && si != 1 {
-            adj_list[si].push(di);
-        }
-        if si != 0 && di != 1 {
-            adj_list[di].push(si);
-        }
-    }
-
-    (adj_list, cap_list)
+#[derive(Copy, Eq, PartialEq, Clone)]
+enum NodeType {
+    Dot,
+    Empty,
 }
 
-use std::collections::HashMap;
-
-fn solution((adj_list, cap_list): (Vec<Vec<usize>>, Vec<bool>)) -> u64 {
-    let mut visited = 0;
-
-    let mut memo = HashMap::new();
-
-    dfs::<true>(&adj_list, &cap_list, &mut visited, &mut memo, 0)
-}
-
-#[inline]
-fn dfs<const REPEAT: bool>(
-    adj_list: &Vec<Vec<usize>>,
-    cap_list: &[bool],
-    visited: &mut u64,
-    map: &mut HashMap<(usize, bool, u64), u64>,
-    node: usize,
-) -> u64 {
-    if node == 1 {
-        return 1;
-    }
-
-    if let Some(&v) = map.get(&(node, REPEAT, *visited)) {
-        return v;
-    }
-
-    let mut paths = 0;
-    for &neighbour in adj_list[node].iter() {
-        match ((*visited & (1 << neighbour) > 0), (cap_list[neighbour])) {
-            (false, _) | (_, true) => {
-                *visited |= 1 << neighbour;
-                paths += dfs::<REPEAT>(adj_list, cap_list, visited, map, neighbour);
-                *visited &= !(1 << neighbour);
-            }
-            // If repeat flag is set, We include the node once more and calculate all paths
-            (true, false) if REPEAT => {
-                paths += dfs::<false>(adj_list, cap_list, visited, map, neighbour);
-            }
-            _ => (),
+impl NodeType {
+    #[inline]
+    const fn or(&self, rhs: &NodeType) -> NodeType {
+        match (self, rhs) {
+            (_, NodeType::Dot) | (NodeType::Dot, _) => NodeType::Dot,
+            _ => NodeType::Empty,
         }
     }
+}
 
-    map.insert((node, REPEAT, *visited), paths);
+#[derive(Copy, Clone)]
+struct Point {
+    x: usize,
+    y: usize,
+}
 
-    paths
+#[derive(Copy, Clone)]
+enum Fold {
+    X(usize),
+    Y(usize),
+}
+
+fn parse_input(input: &'static str) -> (Vec<Point>, Vec<Fold>) {
+    let mut input = input.split("\n\n");
+
+    let points = input
+        .next()
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let (x, y) = line.split_once(',').unwrap();
+
+            Point {
+                x: usize::from_str_radix(x, 10).unwrap(),
+                y: usize::from_str_radix(y, 10).unwrap(),
+            }
+        })
+        .collect();
+
+    let folds = input
+        .next()
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let line = line.trim_start_matches("fold along ");
+            let (axis, position) = line.split_once('=').unwrap();
+
+            let position = usize::from_str_radix(position, 10).unwrap();
+            match axis {
+                "x" => Fold::X(position),
+                "y" => Fold::Y(position),
+                _ => unreachable!(),
+            }
+        })
+        .collect();
+
+    (points, folds)
+}
+
+fn solution((points, folds): (Vec<Point>, Vec<Fold>)) -> u64 {
+    let mut y_max = 0;
+    let mut x_max = 0;
+    for point in points.iter() {
+        y_max = std::cmp::max(y_max, point.y);
+        x_max = std::cmp::max(x_max, point.x);
+    }
+    let mut grid = vec![vec![NodeType::Empty; x_max + 2]; y_max + 2];
+
+    for point in points {
+        grid[point.y][point.x] = NodeType::Dot
+    }
+
+    for fold in folds {
+        let m = grid.len();
+        let n = grid[0].len();
+        match fold {
+            Fold::X(position) => {
+                for j in 0..m {
+                    for i in (0..position).rev() {
+                        let mirror = std::mem::replace(&mut grid[j][n - i - 1], NodeType::Empty);
+                        grid[j][i] = grid[j][i].or(&mirror);
+                    }
+                }
+            }
+            Fold::Y(position) => {
+                for i in 0..n {
+                    for j in (0..position).rev() {
+                        let mirror =
+                            std::mem::replace(&mut grid[2 * position - j][i], NodeType::Empty);
+                        grid[j][i] = grid[j][i].or(&mirror);
+                    }
+                }
+            }
+        }
+
+        let mut sum = 0;
+        for row in grid {
+            sum += row.into_iter().fold(0, |a, x| match x {
+                NodeType::Dot => a + 1,
+                NodeType::Empty => a,
+            })
+        }
+
+        return sum;
+    }
+
+    0
 }
 
 fn main() {
