@@ -37,7 +37,7 @@ fn solution((template, pairs): (Vec<char>, HashMap<(char, char), char>)) -> u64 
         let a = template[i];
         let b = template[i + 1];
 
-        let out = recurse(&pairs, &mut memo, a, b, 10);
+        let out = recurse(&pairs, &mut memo, a, b, 40);
 
         for (a, b) in map.iter_mut().zip(out.into_iter()) {
             *a += b;
