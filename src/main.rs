@@ -1,6 +1,4 @@
 #![feature(test)]
-
-use std::fmt::{Display, Write};
 extern crate test;
 
 const INPUTS: [&'static str; 2] = [
@@ -8,134 +6,105 @@ const INPUTS: [&'static str; 2] = [
     include_str!("../inputs/input.txt"),
 ];
 
-#[derive(Copy, Eq, PartialEq, Clone)]
-enum NodeType {
-    Dot,
-    Empty,
-}
-
-impl Display for NodeType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            NodeType::Dot => f.write_char('\u{2588}'),
-            NodeType::Empty => f.write_char('.'),
-        }
-    }
-}
-
-impl NodeType {
-    #[inline]
-    const fn or(&self, rhs: &NodeType) -> NodeType {
-        match (self, rhs) {
-            (_, NodeType::Dot) | (NodeType::Dot, _) => NodeType::Dot,
-            _ => NodeType::Empty,
-        }
-    }
-}
-
-#[derive(Copy, Clone)]
-struct Point {
-    x: usize,
-    y: usize,
-}
-
-#[derive(Copy, Clone)]
-enum Fold {
-    X(usize),
-    Y(usize),
-}
-
-fn parse_input(input: &'static str) -> (Vec<Point>, Vec<Fold>) {
+use std::collections::HashMap;
+fn parse_input(input: &'static str) -> (Vec<char>, HashMap<(char, char), char>) {
     let mut input = input.split("\n\n");
 
-    let points = input
+    let template = input.next().unwrap().chars().collect();
+
+    let folds: HashMap<(char, char), char> = input
         .next()
         .unwrap()
         .lines()
         .map(|line| {
-            let (x, y) = line.split_once(',').unwrap();
+            let (s, d) = line.split_once(" -> ").unwrap();
+            let mut ss = s.chars();
+            let p = ss.next().unwrap();
+            let q = ss.next().unwrap();
 
-            Point {
-                x: usize::from_str_radix(x, 10).unwrap(),
-                y: usize::from_str_radix(y, 10).unwrap(),
-            }
+            ((p, q), d.chars().next().unwrap())
         })
         .collect();
 
-    let folds = input
-        .next()
-        .unwrap()
-        .lines()
-        .map(|line| {
-            let line = line.trim_start_matches("fold along ");
-            let (axis, position) = line.split_once('=').unwrap();
-
-            let position = usize::from_str_radix(position, 10).unwrap();
-            match axis {
-                "x" => Fold::X(position),
-                "y" => Fold::Y(position),
-                _ => unreachable!(),
-            }
-        })
-        .collect();
-
-    (points, folds)
+    (template, folds)
 }
 
-fn solution((points, folds): (Vec<Point>, Vec<Fold>)) -> Vec<Vec<NodeType>> {
-    let mut y_max = 0;
-    let mut x_max = 0;
-    for point in points.iter() {
-        y_max = std::cmp::max(y_max, point.y);
-        x_max = std::cmp::max(x_max, point.x);
-    }
-    let mut grid = vec![vec![NodeType::Empty; x_max + 2]; y_max + 2];
+fn solution((template, pairs): (Vec<char>, HashMap<(char, char), char>)) -> u64 {
+    let mut map = [0; 26];
+    let mut memo = HashMap::new();
 
-    for point in points {
-        grid[point.y][point.x] = NodeType::Dot
-    }
+    for i in 0..template.len() - 1 {
+        let a = template[i];
+        let b = template[i + 1];
 
-    for fold in folds {
-        let m = grid.len();
-        let n = grid[0].len();
-        match fold {
-            Fold::X(position) => {
-                for j in 0..m {
-                    for i in (0..position).rev() {
-                        let mirror = std::mem::replace(&mut grid[j][n - i - 1], NodeType::Empty);
-                        grid[j][i] = grid[j][i].or(&mirror);
-                    }
+        let out = recurse(&pairs, &mut memo, a, b, 10);
 
-                    grid[j] = grid[j].iter().take(position).cloned().collect();
-                }
-            }
-            Fold::Y(position) => {
-                for i in 0..n {
-                    for j in (0..position).rev() {
-                        let mirror =
-                            std::mem::replace(&mut grid[2 * position - j][i], NodeType::Empty);
-                        grid[j][i] = grid[j][i].or(&mirror);
-                    }
-                }
-
-                grid = grid.into_iter().take(position).collect();
-            }
+        for (a, b) in map.iter_mut().zip(out.into_iter()) {
+            *a += b;
+        }
+        if i != template.len() - 2 {
+            map[b as usize - b'A' as usize] -= 1;
         }
     }
 
-    grid
+    let mut most_common = 0;
+    let mut least_common = std::u64::MAX;
+
+    for a in map {
+        most_common = std::cmp::max(most_common, a);
+        if a != 0 {
+            least_common = std::cmp::min(least_common, a);
+        }
+    }
+
+    most_common - least_common
+}
+
+fn recurse(
+    pairs: &HashMap<(char, char), char>,
+    memo: &mut HashMap<(char, char, i32), [u64; 26]>,
+    a: char,
+    b: char,
+    steps: i32,
+) -> [u64; 26] {
+    if steps == 0 {
+        let mut out = [0; 26];
+        out[a as usize - b'A' as usize] += 1;
+        out[b as usize - b'A' as usize] += 1;
+        return out;
+    }
+    if steps < 0 {
+        return [0; 26];
+    }
+
+    if let Some(v) = memo.get(&(a, b, steps)) {
+        return *v;
+    }
+
+    if let Some(&token) = pairs.get(&(a, b)) {
+        let mut out1 = recurse(pairs, memo, a, token, steps - 1);
+        let out2 = recurse(pairs, memo, token, b, steps - 1);
+
+        for (a, b) in out1.iter_mut().zip(out2.into_iter()) {
+            *a += b;
+        }
+
+        out1[token as usize - b'A' as usize] -= 1;
+
+        memo.insert((a, b, steps), out1);
+        return out1;
+    }
+    let mut out = [0; 26];
+    out[a as usize - b'A' as usize] += 1;
+    out[b as usize - b'A' as usize] += 1;
+    out
 }
 
 fn main() {
     for input in INPUTS {
         let input = parse_input(input);
-        let grid = solution(input);
-        for row in grid.iter() {
-            for c in row {
-                print!("{}", c);
-            }
-            println!("")
-        }
+        let result = solution(input);
+        println!("Result = {}", result);
     }
 }
 
