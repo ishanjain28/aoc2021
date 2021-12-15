@@ -1,4 +1,6 @@
 #![feature(test)]
+use std::{cmp::Reverse, collections::BinaryHeap};
+
 extern crate test;
 
 const INPUTS: [&'static str; 2] = [
@@ -6,98 +8,59 @@ const INPUTS: [&'static str; 2] = [
     include_str!("../inputs/input.txt"),
 ];
 
-use std::collections::HashMap;
-fn parse_input(input: &'static str) -> (Vec<char>, HashMap<(char, char), char>) {
-    let mut input = input.split("\n\n");
-
-    let template = input.next().unwrap().chars().collect();
-
-    let folds: HashMap<(char, char), char> = input
-        .next()
-        .unwrap()
+fn parse_input(input: &'static str) -> Vec<Vec<u8>> {
+    input
         .lines()
-        .map(|line| {
-            let (s, d) = line.split_once(" -> ").unwrap();
-            let mut ss = s.chars();
-            let p = ss.next().unwrap();
-            let q = ss.next().unwrap();
-
-            ((p, q), d.chars().next().unwrap())
-        })
-        .collect();
-
-    (template, folds)
+        .map(|line| line.bytes().map(|x| x - b'0').collect())
+        .collect()
 }
 
-fn solution((template, pairs): (Vec<char>, HashMap<(char, char), char>)) -> u64 {
-    let mut map = [0; 26];
-    let mut memo = HashMap::new();
+fn solution(grid: Vec<Vec<u8>>) -> u64 {
+    let m = grid.len();
+    let n = grid[0].len();
+    let mut visited = vec![vec![false; n]; m];
 
-    for i in 0..template.len() - 1 {
-        let a = template[i];
-        let b = template[i + 1];
+    let mut heap = BinaryHeap::with_capacity(m * n);
+    heap.push((Reverse(0), 0i32, 0i32));
 
-        let out = recurse(&pairs, &mut memo, a, b, 40);
-
-        for (a, b) in map.iter_mut().zip(out.into_iter()) {
-            *a += b;
+    while let Some((Reverse(cost), x, y)) = heap.pop() {
+        if visited[x as usize][y as usize] {
+            continue;
+        } else {
+            visited[x as usize][y as usize] = true;
         }
-        if i != template.len() - 2 {
-            map[b as usize - b'A' as usize] -= 1;
+
+        if x == m as i32 - 1 && y == n as i32 - 1 {
+            return cost;
+        }
+
+        for (i, j) in [(1i32, 0i32), (0, 1), (-1, 0), (0, -1)] {
+            let px = i + x;
+            let py = j + y;
+
+            if px < 0
+                || py < 0
+                || px >= m as i32
+                || py >= n as i32
+                || visited[px as usize][py as usize]
+            {
+                continue;
+            }
+
+            let mapped_value = map_coords(&grid, px as usize, py as usize, m, n);
+            heap.push((Reverse(cost + mapped_value as u64), px, py));
         }
     }
 
-    let mut most_common = 0;
-    let mut least_common = std::u64::MAX;
-
-    for a in map {
-        most_common = std::cmp::max(most_common, a);
-        if a != 0 {
-            least_common = std::cmp::min(least_common, a);
-        }
-    }
-
-    most_common - least_common
+    0
 }
 
-fn recurse(
-    pairs: &HashMap<(char, char), char>,
-    memo: &mut HashMap<(char, char, i32), [u64; 26]>,
-    a: char,
-    b: char,
-    steps: i32,
-) -> [u64; 26] {
-    if steps == 0 {
-        let mut out = [0; 26];
-        out[a as usize - b'A' as usize] += 1;
-        out[b as usize - b'A' as usize] += 1;
-        return out;
-    }
-    if steps < 0 {
-        return [0; 26];
-    }
+fn map_coords(grid: &Vec<Vec<u8>>, x: usize, y: usize, w: usize, h: usize) -> u8 {
+    let gx = (x / w) as u8;
+    let gy = (y / h) as u8;
+    let (mx, my) = (x % w, y % h);
 
-    if let Some(v) = memo.get(&(a, b, steps)) {
-        return *v;
-    }
-
-    if let Some(&token) = pairs.get(&(a, b)) {
-        let mut out1 = recurse(pairs, memo, a, token, steps - 1);
-        let out2 = recurse(pairs, memo, token, b, steps - 1);
-
-        for (a, b) in out1.iter_mut().zip(out2.into_iter()) {
-            *a += b;
-        }
-
-        out1[token as usize - b'A' as usize] -= 1;
-
-        memo.insert((a, b, steps), out1);
-        return out1;
-    }
-    let mut out = [0; 26];
-    out[a as usize - b'A' as usize] += 1;
-    out[b as usize - b'A' as usize] += 1;
-    out
+    (grid[mx][my] + gx + gy - 1) % 9 + 1
 }
 
 fn main() {
