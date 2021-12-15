@@ -18,19 +18,26 @@ fn parse_input(input: &'static str) -> Vec<Vec<u8>> {
 fn solution(grid: Vec<Vec<u8>>) -> u64 {
     let m = grid.len();
     let n = grid[0].len();
-    let mut visited = vec![vec![false; n]; m];
+    let (tm, tn) = (m * 5, n * 5);
 
-    let mut heap = BinaryHeap::with_capacity(m * n);
+    let mut visited = vec![vec![false; tn]; tm];
+
+    let mut heap = BinaryHeap::with_capacity(tm * tn);
     heap.push((Reverse(0), 0i32, 0i32));
 
     while let Some((Reverse(cost), x, y)) = heap.pop() {
-        if visited[x as usize][y as usize] {
-            continue;
-        } else {
-            visited[x as usize][y as usize] = true;
+        if let Some(v) = visited
+            .get_mut(x as usize)
+            .and_then(|row| row.get_mut(y as usize))
+        {
+            if *v {
+                continue;
+            } else {
+                *v = true;
+            }
         }
 
-        if x == m as i32 - 1 && y == n as i32 - 1 {
+        if x == tm as i32 - 1 && y == tn as i32 - 1 {
             return cost;
         }
 
@@ -40,8 +47,8 @@ fn solution(grid: Vec<Vec<u8>>) -> u64 {
 
             if px < 0
                 || py < 0
-                || px >= m as i32
-                || py >= n as i32
+                || px >= tm as i32
+                || py >= tn as i32
                 || visited[px as usize][py as usize]
             {
                 continue;
