@@ -1,72 +1,16 @@
 #![feature(test)]
-use std::collections::HashMap;
-
 extern crate test;
+
+use bitvec::view::BitView;
+
+type BitSlice<'a> = &'a bitvec::slice::BitSlice<bitvec::order::Msb0, u8>;
 
 const INPUTS: [&'static str; 2] = [
     include_str!("../inputs/sample.txt"),
     include_str!("../inputs/input.txt"),
 ];
 
-fn parse_input(input: &'static str) -> String {
-    let mapping = HashMap::from([
-        ('0', "0000"),
-        ('1', "0001"),
-        ('2', "0010"),
-        ('3', "0011"),
-        ('4', "0100"),
-        ('5', "0101"),
-        ('6', "0110"),
-        ('7', "0111"),
-        ('8', "1000"),
-        ('9', "1001"),
-        ('A', "1010"),
-        ('B', "1011"),
-        ('C', "1100"),
-        ('D', "1101"),
-        ('E', "1110"),
-        ('F', "1111"),
-    ]);
-    let input = input.trim();
-
-    let mut out = String::with_capacity(input.len() * 4);
-
-    for c in input.chars() {
-        let v = *mapping.get(&c).unwrap();
-        out.push_str(v);
-    }
-
-    out
-}
-
-fn read_header(s: &mut impl Iterator<Item = char>) -> (u8, u8) {
-    let raw_version: String = s.by_ref().take(3).collect();
-    let version = u8::from_str_radix(&raw_version, 2).unwrap();
-
-    let raw_type_id: String = s.take(3).collect();
-    let type_id = u8::from_str_radix(&raw_type_id, 2).unwrap();
-
-    (version, type_id)
-}
-
-fn read_literal(input: &mut impl Iterator<Item = char>) -> (u64, u64) {
-    let mut out = String::new();
-    let mut read = 0;
-    loop {
-        let last = input.next().unwrap() == '0';
-        out.extend(input.take(4));
-        read += 5;
-
-        if last {
-            break;
-        }
-    }
-
-    (u64::from_str_radix(&out, 2).unwrap(), read)
-}
-
 #[derive(Debug)]
-
 struct PacketHeader {
     version: u8,
     type_id: u8,
@@ -77,121 +21,148 @@ struct Packet {
     header: PacketHeader,
     size: u64,
     literal: Option<u64>,
-
     sub_packets: Vec<Packet>,
 }
 
 impl Packet {
-    fn value(&self) -> u64 {
-        match self.header.type_id {
-            0 => self.sub_packets.iter().fold(0, |a, x| a + x.value()),
-            1 => self.sub_packets.iter().fold(1, |a, x| a * x.value()),
-            2 => self.sub_packets.iter().map(|x| x.value()).min().unwrap(),
-            3 => self.sub_packets.iter().map(|x| x.value()).max().unwrap(),
-            4 => self.literal.unwrap(),
-            5 => {
-                let value1 = self.sub_packets[0].value();
-                let value2 = self.sub_packets[1].value();
+    fn new(input: &'static str) -> Self {
+        let out = hex::decode(input).unwrap();
 
-                if value1 > value2 {
-                    1
-                } else {
-                    0
-                }
-            }
-            6 => {
-                let value1 = self.sub_packets[0].value();
-                let value2 = self.sub_packets[1].value();
+        let mut bvec: BitSlice = BitView::view_bits(out.as_slice());
 
-                if value1 < value2 {
-                    1
-                } else {
-                    0
-                }
-            }
-            7 => {
-                let value1 = self.sub_packets[0].value();
-                let value2 = self.sub_packets[1].value();
+        Self::parse(&mut bvec)
+    }
 
-                if value1 == value2 {
-                    1
-                } else {
-                    0
-                }
+    fn read_literal(ip: &mut BitSlice) -> (u64, u64) {
+        let mut out = 0;
+        let mut read = 0;
+
+        loop {
+            let (word, remaining) = ip.split_at(5);
+            *ip = remaining;
+            read += 5;
+
+            out = out << 4 | read_as_u8(&word[1..]) as u64;
+
+            if !*word.first().unwrap() {
+                break;
             }
-            _ => unreachable!(),
         }
+
+        (out, read)
+    }
+
+    fn read_header(ip: &mut BitSlice) -> (u8, u8) {
+        (take_u8(ip, 3), take_u8(ip, 3))
+    }
+
+    fn parse(input: &mut BitSlice) -> Packet {
+        let (version, type_id) = Self::read_header(input);
+
+        let mut out = Packet {
+            size: 6,
+            literal: None,
+            header: PacketHeader { version, type_id },
+            sub_packets: vec![],
+        };
+
+        match type_id {
+            // Literal
+            4 => {
+                let (literal, read) = Self::read_literal(input);
+
+                out.size += read;
+                out.literal = Some(literal);
+            }
+
+            // Operation
+            _ => {
+                let length_type_id = take_u8(input, 1);
+                out.size += 1;
+
+                match length_type_id {
+                    0 => {
+                        let mut trailing_packet_size = take_u64(input, 15);
+                        out.size += 15;
+
+                        while trailing_packet_size > 0 {
+                            let packet = Self::parse(input);
+
+                            trailing_packet_size -= packet.size;
+                            out.size += packet.size;
+                            out.sub_packets.push(packet);
+                        }
+                    }
+
+                    1 => {
+                        let trailing_packet_count = take_u64(input, 11);
+                        out.size += 11;
+
+                        for _ in 0..trailing_packet_count {
+                            let packet = Self::parse(input);
+                            out.size += packet.size;
+                            out.sub_packets.push(packet);
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        };
+        out
     }
 }
 
-fn read_packet(input: &mut impl Iterator<Item = char>) -> Packet {
-    let (version, type_id) = read_header(input);
+fn take_u8(ip: &mut BitSlice, offset: usize) -> u8 {
+    let (num, left) = ip.split_at(offset);
+    *ip = left;
 
-    let mut out = Packet {
-        size: 6,
-        literal: None,
-        header: PacketHeader { version, type_id },
-        sub_packets: vec![],
-    };
+    read_as_u8(num)
+}
 
-    match type_id {
-        // Literal
-        4 => {
-            let (literal, read) = read_literal(input);
+fn take_u64(ip: &mut BitSlice, offset: usize) -> u64 {
+    let (num, left) = ip.split_at(offset);
+    *ip = left;
 
-            out.size += read;
-            out.literal = Some(literal);
-        }
+    read_as_u64(num)
+}
 
-        // Operation
-        _ => {
-            let length_type_id = input.next().unwrap();
-            out.size += 1;
+fn read_as_u64(ip: BitSlice) -> u64 {
+    let mut out = 0;
 
-            match length_type_id {
-                '0' => {
-                    let mut trailing_packet_size =
-                        u64::from_str_radix(&input.take(15).collect::<String>(), 2).unwrap();
-                    out.size += 15;
+    for bit in ip {
+        out = out << 1 | if *bit { 1 } else { 0 };
+    }
 
-                    while trailing_packet_size > 0 {
-                        let packet = read_packet(input);
-
-                        trailing_packet_size -= packet.size;
-                        out.size += packet.size;
-                        out.sub_packets.push(packet);
-                    }
-                }
-
-                '1' => {
-                    let trailing_packet_count =
-                        usize::from_str_radix(&input.take(11).collect::<String>(), 2).unwrap();
-                    out.size += 11;
-
-                    for _ in 0..trailing_packet_count {
-                        let packet = read_packet(input);
-                        out.size += packet.size;
-                        out.sub_packets.push(packet);
-                    }
-                }
-
-                _ => unreachable!(),
-            }
-        }
-    };
     out
 }
 
-fn solution(input: String) -> u64 {
-    let mut input = input.chars();
-    let packet = read_packet(&mut input);
+fn read_as_u8(ip: BitSlice) -> u8 {
+    let mut out = 0;
 
-    packet.value()
+    for bit in ip {
+        out = out << 1 | if *bit { 1 } else { 0 };
+    }
+
+    out
+}
+
+fn solution(input: &'static str) -> u64 {
+    let packet = Packet::new(input.trim());
+
+    let mut stack = vec![packet];
+
+    let mut answer = 0;
+    while let Some(packet) = stack.pop() {
+        answer += packet.header.version as u64;
+
+        stack.extend(packet.sub_packets);
+    }
+
+    answer
 }
 
 fn main() {
     for input in INPUTS {
-        let input = parse_input(input);
         let result = solution(input);
         println!("Result = {}", result);
     }
@@ -199,9 +170,8 @@ fn main() {
 
 #[bench]
 fn solution_bench(b: &mut test::Bencher) {
-    let input = parse_input(INPUTS[1]);
     b.iter(|| {
-        let result = solution(input.clone());
+        let result = solution(INPUTS[1]);
         test::black_box(result);
     })
 }
