@@ -1,9 +1,9 @@
 #![feature(test)]
 extern crate test;
 
-use bitvec::view::BitView;
+use bitvec::{order::Msb0, view::BitView};
 
-type BitSlice<'a> = &'a bitvec::slice::BitSlice<bitvec::order::Msb0, u8>;
+type BitSlice<'a> = &'a bitvec::slice::BitSlice<Msb0, u8>;
 
 const INPUTS: [&'static str; 2] = [
     include_str!("../inputs/sample.txt"),
@@ -110,6 +110,47 @@ impl Packet {
         };
         out
     }
+
+    fn value(&self) -> u64 {
+        match self.header.type_id {
+            0 => self.sub_packets.iter().fold(0, |a, x| a + x.value()),
+            1 => self.sub_packets.iter().fold(1, |a, x| a * x.value()),
+            2 => self.sub_packets.iter().map(|x| x.value()).min().unwrap(),
+            3 => self.sub_packets.iter().map(|x| x.value()).max().unwrap(),
+            4 => self.literal.unwrap(),
+            5 => {
+                let value1 = self.sub_packets[0].value();
+                let value2 = self.sub_packets[1].value();
+
+                if value1 > value2 {
+                    1
+                } else {
+                    0
+                }
+            }
+            6 => {
+                let value1 = self.sub_packets[0].value();
+                let value2 = self.sub_packets[1].value();
+
+                if value1 < value2 {
+                    1
+                } else {
+                    0
+                }
+            }
+            7 => {
+                let value1 = self.sub_packets[0].value();
+                let value2 = self.sub_packets[1].value();
+
+                if value1 == value2 {
+                    1
+                } else {
+                    0
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
 }
 
 fn take_u8(ip: &mut BitSlice, offset: usize) -> u8 {
@@ -149,16 +190,7 @@ fn read_as_u8(ip: BitSlice) -> u8 {
 fn solution(input: &'static str) -> u64 {
     let packet = Packet::new(input.trim());
 
-    let mut stack = vec![packet];
-
-    let mut answer = 0;
-    while let Some(packet) = stack.pop() {
-        answer += packet.header.version as u64;
-
-        stack.extend(packet.sub_packets);
-    }
-
-    answer
+    packet.value()
 }
 
 fn main() {
