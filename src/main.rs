@@ -1,5 +1,5 @@
 #![feature(test)]
-use std::{cmp::Reverse, collections::BinaryHeap};
+use std::{any::Any, collections::HashMap};
 
 extern crate test;
 
@@ -8,66 +8,150 @@ const INPUTS: [&'static str; 2] = [
     include_str!("../inputs/input.txt"),
 ];
 
-fn parse_input(input: &'static str) -> Vec<Vec<u8>> {
-    input
-        .lines()
-        .map(|line| line.bytes().map(|x| x - b'0').collect())
-        .collect()
+fn parse_input(input: &'static str) -> String {
+    let mapping = HashMap::from([
+        ('0', "0000"),
+        ('1', "0001"),
+        ('2', "0010"),
+        ('3', "0011"),
+        ('4', "0100"),
+        ('5', "0101"),
+        ('6', "0110"),
+        ('7', "0111"),
+        ('8', "1000"),
+        ('9', "1001"),
+        ('A', "1010"),
+        ('B', "1011"),
+        ('C', "1100"),
+        ('D', "1101"),
+        ('E', "1110"),
+        ('F', "1111"),
+    ]);
+    let input = input.trim();
+
+    let mut out = String::with_capacity(input.len() * 4);
+
+    for c in input.chars() {
+        let v = *mapping.get(&c).unwrap();
+        out.push_str(v);
+    }
+
+    out
 }
 
-fn solution(grid: Vec<Vec<u8>>) -> u64 {
-    let m = grid.len();
-    let n = grid[0].len();
-    let (tm, tn) = (m * 5, n * 5);
+fn read_header(s: &mut impl Iterator<Item = char>) -> (u8, u8) {
+    let raw_version: String = s.by_ref().take(3).collect();
+    let version = u8::from_str_radix(&raw_version, 2).unwrap();
 
-    let mut visited = vec![vec![false; tn]; tm];
+    let raw_type_id: String = s.take(3).collect();
+    let type_id = u8::from_str_radix(&raw_type_id, 2).unwrap();
 
-    let mut heap = BinaryHeap::with_capacity(tm * tn);
-    heap.push((Reverse(0), 0i32, 0i32));
+    (version, type_id)
+}
 
-    while let Some((Reverse(cost), x, y)) = heap.pop() {
-        if let Some(v) = visited
-            .get_mut(x as usize)
-            .and_then(|row| row.get_mut(y as usize))
-        {
-            if *v {
-                continue;
-            } else {
-                *v = true;
-            }
-        }
+fn read_literal(input: &mut impl Iterator<Item = char>) -> (u64, u64) {
+    let mut out = String::new();
+    let mut read = 0;
+    loop {
+        let last = input.next().unwrap() == '0';
+        out.extend(input.take(4));
+        read += 5;
 
-        if x == tm as i32 - 1 && y == tn as i32 - 1 {
-            return cost;
-        }
-
-        for (i, j) in [(1i32, 0i32), (0, 1), (-1, 0), (0, -1)] {
-            let px = i + x;
-            let py = j + y;
-
-            if px < 0
-                || py < 0
-                || px >= tm as i32
-                || py >= tn as i32
-                || visited[px as usize][py as usize]
-            {
-                continue;
-            }
-
-            let mapped_value = map_coords(&grid, px as usize, py as usize, m, n);
-            heap.push((Reverse(cost + mapped_value as u64), px, py));
+        if last {
+            break;
         }
     }
 
-    0
+    (u64::from_str_radix(&out, 2).unwrap(), read)
 }
 
-fn map_coords(grid: &Vec<Vec<u8>>, x: usize, y: usize, w: usize, h: usize) -> u8 {
-    let gx = (x / w) as u8;
-    let gy = (y / h) as u8;
-    let (mx, my) = (x % w, y % h);
+#[derive(Debug)]
+struct PacketHeader {
+    version: u8,
+    type_id: u8,
+}
 
-    (grid[mx][my] + gx + gy - 1) % 9 + 1
+#[derive(Debug)]
+struct Packet {
+    header: PacketHeader,
+    size: u64,
+    literal: Option<u64>,
+
+    sub_packets: Vec<Packet>,
+}
+
+fn read_packet(input: &mut impl Iterator<Item = char>) -> Packet {
+    let (version, type_id) = read_header(input);
+
+    let mut out = Packet {
+        size: 6,
+        literal: None,
+        header: PacketHeader { version, type_id },
+        sub_packets: vec![],
+    };
+
+    match out.header.type_id {
+        // Literal
+        4 => {
+            let (literal, read) = read_literal(input);
+
+            out.size += read;
+            out.literal = Some(literal);
+        }
+
+        // Operation
+        _ => {
+            let length_type_id = input.next().unwrap();
+            out.size += 1;
+
+            match length_type_id {
+                '0' => {
+                    let mut trailing_packet_size =
+                        u64::from_str_radix(&input.take(15).collect::<String>(), 2).unwrap();
+                    out.size += 15;
+
+                    while trailing_packet_size > 0 {
+                        let packet = read_packet(input);
+
+                        trailing_packet_size -= packet.size;
+                        out.size += packet.size;
+                        out.sub_packets.push(packet);
+                    }
+                }
+
+                '1' => {
+                    let trailing_packet_count =
+                        usize::from_str_radix(&input.take(11).collect::<String>(), 2).unwrap();
+                    out.size += 11;
+
+                    for _ in 0..trailing_packet_count {
+                        let packet = read_packet(input);
+                        out.size += packet.size;
+                        out.sub_packets.push(packet);
+                    }
+                }
+
+                _ => unreachable!(),
+            }
+        }
+    };
+    out
+}
+
+fn solution(input: String) -> u64 {
+    let mut input = input.chars();
+    let packet = read_packet(&mut input);
+
+    let mut answer = 0;
+    let mut stack = vec![packet];
+
+    while let Some(packet) = stack.pop() {
+        answer += packet.header.version as u64;
+
+        stack.extend(packet.sub_packets);
+    }
+
+    answer
 }
 
 fn main() {
