@@ -1,5 +1,5 @@
 #![feature(test)]
-use std::{any::Any, collections::HashMap};
+use std::collections::HashMap;
 
 extern crate test;
 
@@ -66,6 +66,7 @@ fn read_literal(input: &mut impl Iterator<Item = char>) -> (u64, u64) {
 }
 
 #[derive(Debug)]
+
 struct PacketHeader {
     version: u8,
     type_id: u8,
@@ -80,6 +81,49 @@ struct Packet {
     sub_packets: Vec<Packet>,
 }
 
+impl Packet {
+    fn value(&self) -> u64 {
+        match self.header.type_id {
+            0 => self.sub_packets.iter().fold(0, |a, x| a + x.value()),
+            1 => self.sub_packets.iter().fold(1, |a, x| a * x.value()),
+            2 => self.sub_packets.iter().map(|x| x.value()).min().unwrap(),
+            3 => self.sub_packets.iter().map(|x| x.value()).max().unwrap(),
+            4 => self.literal.unwrap(),
+            5 => {
+                let value1 = self.sub_packets[0].value();
+                let value2 = self.sub_packets[1].value();
+
+                if value1 > value2 {
+                    1
+                } else {
+                    0
+                }
+            }
+            6 => {
+                let value1 = self.sub_packets[0].value();
+                let value2 = self.sub_packets[1].value();
+
+                if value1 < value2 {
+                    1
+                } else {
+                    0
+                }
+            }
+            7 => {
+                let value1 = self.sub_packets[0].value();
+                let value2 = self.sub_packets[1].value();
+
+                if value1 == value2 {
+                    1
+                } else {
+                    0
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
 fn read_packet(input: &mut impl Iterator<Item = char>) -> Packet {
     let (version, type_id) = read_header(input);
 
@@ -90,7 +134,7 @@ fn read_packet(input: &mut impl Iterator<Item = char>) -> Packet {
         sub_packets: vec![],
     };
 
-    match out.header.type_id {
+    match type_id {
         // Literal
         4 => {
             let (literal, read) = read_literal(input);
@@ -142,16 +186,7 @@ fn solution(input: String) -> u64 {
     let mut input = input.chars();
     let packet = read_packet(&mut input);
 
-    let mut answer = 0;
-    let mut stack = vec![packet];
-
-    while let Some(packet) = stack.pop() {
-        answer += packet.header.version as u64;
-
-        stack.extend(packet.sub_packets);
-    }
-
-    answer
+    packet.value()
 }
 
 fn main() {
