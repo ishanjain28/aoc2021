@@ -29,28 +29,21 @@ fn parse(input: &'static str) -> (RangeInclusive<i32>, RangeInclusive<i32>) {
     (sx..=ex, sy..=ey)
 }
 
-fn check(
-    mut vx: i32,
-    mut vy: i32,
-    (tx, ty): (RangeInclusive<i32>, RangeInclusive<i32>),
-) -> Option<i32> {
+fn check(mut vx: i32, mut vy: i32, (tx, ty): (RangeInclusive<i32>, RangeInclusive<i32>)) -> bool {
     let mut sx = 0;
     let mut sy = 0;
-    let mut y_max = 0;
 
     loop {
         if vx == 0 && sy < *ty.start() {
-            return None;
+            return false;
         }
 
         if tx.contains(&sx) && ty.contains(&sy) {
-            return Some(y_max);
+            return true;
         }
 
         sx += vx;
         sy += vy;
-
-        y_max = y_max.max(sy);
 
         vy -= 1;
         vx -= if vx > 0 {
@@ -64,16 +57,16 @@ fn check(
 }
 
 fn solution((xr, yr): (RangeInclusive<i32>, RangeInclusive<i32>)) -> i32 {
-    let mut y_max = 0;
+    let mut count = 0;
     for x in 0..250 {
         for y in -250..=250 {
-            if let Some(lymax) = check(x, y, (xr.clone(), yr.clone())) {
-                y_max = y_max.max(lymax);
+            if check(x, y, (xr.clone(), yr.clone())) {
+                count += 1;
             }
         }
     }
 
-    y_max
+    count
 }
 
 fn main() {
