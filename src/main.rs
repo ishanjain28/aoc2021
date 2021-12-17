@@ -1,200 +1,84 @@
 #![feature(test)]
+
+use std::ops::RangeInclusive;
 extern crate test;
-
-use bitvec::{order::Msb0, view::BitView};
-
-type BitSlice<'a> = &'a bitvec::slice::BitSlice<Msb0, u8>;
 
 const INPUTS: [&'static str; 2] = [
     include_str!("../inputs/sample.txt"),
     include_str!("../inputs/input.txt"),
 ];
 
-#[derive(Debug)]
-struct PacketHeader {
-    version: u8,
-    type_id: u8,
+fn parse(input: &'static str) -> (RangeInclusive<i32>, RangeInclusive<i32>) {
+    let input = input.trim();
+    let input = input.trim_start_matches("target area: ");
+
+    let (x, y) = input.split_once(", ").unwrap();
+
+    let x = x.trim_start_matches("x=");
+    let y = y.trim_start_matches("y=");
+
+    let (sx, ex) = x
+        .split_once("..")
+        .map(|(a, b)| (a.parse::<i32>().unwrap(), b.parse::<i32>().unwrap()))
+        .unwrap();
+    let (sy, ey) = y
+        .split_once("..")
+        .map(|(a, b)| (a.parse::<i32>().unwrap(), b.parse::<i32>().unwrap()))
+        .unwrap();
+
+    (sx..=ex, sy..=ey)
 }
 
-#[derive(Debug)]
-struct Packet {
-    header: PacketHeader,
-    size: u64,
-    literal: Option<u64>,
-    sub_packets: Vec<Packet>,
-}
+fn check(
+    mut vx: i32,
+    mut vy: i32,
+    (tx, ty): (RangeInclusive<i32>, RangeInclusive<i32>),
+) -> Option<i32> {
+    let mut sx = 0;
+    let mut sy = 0;
+    let mut y_max = 0;
 
-impl Packet {
-    fn new(input: &'static str) -> Self {
-        let out = hex::decode(input).unwrap();
-
-        let mut bvec: BitSlice = BitView::view_bits(out.as_slice());
-
-        Self::parse(&mut bvec)
-    }
-
-    fn read_literal(ip: &mut BitSlice) -> (u64, u64) {
-        let mut out = 0;
-        let mut read = 0;
-
-        loop {
-            let (word, remaining) = ip.split_at(5);
-            *ip = remaining;
-            read += 5;
-
-            out = out << 4 | read_as_u8(&word[1..]) as u64;
-
-            if !*word.first().unwrap() {
-                break;
-            }
+    loop {
+        if vx == 0 && sy < *ty.start() {
+            return None;
         }
 
-        (out, read)
-    }
+        if tx.contains(&sx) && ty.contains(&sy) {
+            return Some(y_max);
+        }
 
-    fn read_header(ip: &mut BitSlice) -> (u8, u8) {
-        (take_u8(ip, 3), take_u8(ip, 3))
-    }
+        sx += vx;
+        sy += vy;
 
-    fn parse(input: &mut BitSlice) -> Packet {
-        let (version, type_id) = Self::read_header(input);
+        y_max = y_max.max(sy);
 
-        let mut out = Packet {
-            size: 6,
-            literal: None,
-            header: PacketHeader { version, type_id },
-            sub_packets: vec![],
+        vy -= 1;
+        vx -= if vx > 0 {
+            1
+        } else if vx < 0 {
+            -1
+        } else {
+            0
         };
-
-        match type_id {
-            // Literal
-            4 => {
-                let (literal, read) = Self::read_literal(input);
-
-                out.size += read;
-                out.literal = Some(literal);
-            }
-
-            // Operation
-            _ => {
-                let length_type_id = take_u8(input, 1);
-                out.size += 1;
-
-                match length_type_id {
-                    0 => {
-                        let mut trailing_packet_size = take_u64(input, 15);
-                        out.size += 15;
-
-                        while trailing_packet_size > 0 {
-                            let packet = Self::parse(input);
-
-                            trailing_packet_size -= packet.size;
-                            out.size += packet.size;
-                            out.sub_packets.push(packet);
-                        }
-                    }
-
-                    1 => {
-                        let trailing_packet_count = take_u64(input, 11);
-                        out.size += 11;
-
-                        for _ in 0..trailing_packet_count {
-                            let packet = Self::parse(input);
-                            out.size += packet.size;
-                            out.sub_packets.push(packet);
-                        }
-                    }
-                    _ => unreachable!(),
-                }
-            }
-        };
-        out
     }
+}
 
-    fn value(&self) -> u64 {
-        match self.header.type_id {
-            0 => self.sub_packets.iter().fold(0, |a, x| a + x.value()),
-            1 => self.sub_packets.iter().fold(1, |a, x| a * x.value()),
-            2 => self.sub_packets.iter().map(|x| x.value()).min().unwrap(),
-            3 => self.sub_packets.iter().map(|x| x.value()).max().unwrap(),
-            4 => self.literal.unwrap(),
-            5 => {
-                let value1 = self.sub_packets[0].value();
-                let value2 = self.sub_packets[1].value();
-
-                if value1 > value2 {
-                    1
-                } else {
-                    0
-                }
+fn solution((xr, yr): (RangeInclusive<i32>, RangeInclusive<i32>)) -> i32 {
+    let mut y_max = 0;
+    for x in 0..250 {
+        for y in -250..=250 {
+            if let Some(lymax) = check(x, y, (xr.clone(), yr.clone())) {
+                y_max = y_max.max(lymax);
             }
-            6 => {
-                let value1 = self.sub_packets[0].value();
-                let value2 = self.sub_packets[1].value();
-
-                if value1 < value2 {
-                    1
-                } else {
-                    0
-                }
-            }
-            7 => {
-                let value1 = self.sub_packets[0].value();
-                let value2 = self.sub_packets[1].value();
-
-                if value1 == value2 {
-                    1
-                } else {
-                    0
-                }
-            }
-            _ => unreachable!(),
         }
     }
-}
 
-fn take_u8(ip: &mut BitSlice, offset: usize) -> u8 {
-    let (num, left) = ip.split_at(offset);
-    *ip = left;
-
-    read_as_u8(num)
-}
-
-fn take_u64(ip: &mut BitSlice, offset: usize) -> u64 {
-    let (num, left) = ip.split_at(offset);
-    *ip = left;
-
-    read_as_u64(num)
-}
-
-fn read_as_u64(ip: BitSlice) -> u64 {
-    let mut out = 0;
-
-    for bit in ip {
-        out = out << 1 | if *bit { 1 } else { 0 };
-    }
-
-    out
-}
-
-fn read_as_u8(ip: BitSlice) -> u8 {
-    let mut out = 0;
-
-    for bit in ip {
-        out = out << 1 | if *bit { 1 } else { 0 };
-    }
-
-    out
-}
-
-fn solution(input: &'static str) -> u64 {
-    let packet = Packet::new(input.trim());
-
-    packet.value()
+    y_max
 }
 
 fn main() {
     for input in INPUTS {
+        let input = parse(input);
         let result = solution(input);
         println!("Result = {}", result);
     }
@@ -202,8 +86,9 @@ fn main() {
 
 #[bench]
 fn solution_bench(b: &mut test::Bencher) {
+    let input = parse(INPUTS[1]);
     b.iter(|| {
-        let result = solution(INPUTS[1]);
+        let result = solution(input.clone());
         test::black_box(result);
     })
 }
